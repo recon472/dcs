@@ -73,33 +73,30 @@ local MissionNamePool = {
 "Operation Fire Fighter"
 }
 
--- unit templates
-local Templates_RED_Occupation = {
-  "RED Template Occupation #001",
-  "RED Template Occupation #002",
-  "RED Template Occupation #003"
-}
-
 -- array to hold missions
 local Missions = {}
 
 -- mission info class
 local Mission = {}
-function Mission:New(Name, GroupName)
+function Mission:New(Name, GroupName, Type, Briefing, Intel, Coordinates)
   local object = {
     Name = Name,
-    GroupName = GroupName
+    GroupName = GroupName,
+    Type = Type,
+    Briefing = Briefing,
+    Intel = Intel,
+    Coordinates = Coordinates
   }
   return object
 end
 
 -- print out mission info function
 function FormatMissionInfo(Mission)
-  return Mission.Name
+  return Mission.Name.." | "..Mission.Type.." | "..Mission.Coordinates.."\n"..Mission.Briefing.."\n"..Mission.Intel
 end
 
 function ListOneMission(Mission)
-  MessageToAll(FormatMissionInfo(Mission), 10)
+  MessageToAll(FormatMissionInfo(Mission), 15)
 end
 
 function ListAllMissions()
@@ -114,7 +111,7 @@ function ListAllMissions()
 end
 
 function NotifyNewMission(Mission)
-  MessageToAll("New Mission "..Mission.Name, 10)
+  MessageToAll("New Mission "..Mission.Name.." | "..Mission.Type, 10)
 end
 
 function NotifyMissionEnd(Mission)
@@ -144,12 +141,24 @@ function GetMissionName()
   return Name
 end
 
+-- get all group names from prefix
+function GetGroupNamesFromPrefix(Prefix)
+  local Occupation_Groups = SET_GROUP:New():FilterCoalitions("red"):FilterPrefixes(Prefix):FilterStart()
+  return Occupation_Groups:GetSetNames()
+end
+
+-- get random group name from prefix
+function GetRandomGroupNameFromPrefix(Prefix)
+  local Names = GetGroupNamesFromPrefix(Prefix)
+  return Names[math.random(1, #Names)]
+end
+
 -- create mission menu
 local Menu_Missions = MENU_COALITION:New(coalition.side.BLUE, "Missions")
 local Menu_List_All_Missions = MENU_COALITION_COMMAND:New(coalition.side.BLUE, "Show All", Menu_Missions, ListAllMissions)
 
 -- create a mission
-function CreateMission(Templates, SpawnGroup)
+function CreateMission(Templates, SpawnGroup, ConfigureSpawn, ConfigureUnits, Type, Briefing, Intel)
 
   -- if we already have a mission with this group, return
   for Index = 1, #Missions, 1 do
@@ -163,26 +172,28 @@ function CreateMission(Templates, SpawnGroup)
   if Name == nil then
     return
   end
- 
+
+  -- create a spawn
+  local RED_Occupation_Spawn = SPAWN:New(SpawnGroup)
+  RED_Occupation_Spawn:InitRandomizeTemplate(Templates)
+  
+  -- configure it
+  ConfigureSpawn(RED_Occupation_Spawn)
+    
+  -- spawn units
+  local RED_Occupation_Group = RED_Occupation_Spawn:Spawn()
+  
   -- create mission info, menu, and notify the player there's a new mission
-  local Mission_Info = Mission:New(Name, SpawnGroup)
+  local Coordinate = RED_Occupation_Spawn:GetCoordinate()
+  local Coordinate_Mark = Coordinate:MarkToCoalitionBlue(Name.." | "..Type.."\n\n"..Briefing, true)
+  local Mission_Info = Mission:New(Name, SpawnGroup, Type, Briefing, Intel, Coordinate:ToStringLLDMS())
   local Menu_Item = MENU_COALITION_COMMAND:New(coalition.side.BLUE, Name, Menu_Missions, ListOneMission, Mission_Info)
   table.insert(Missions, Mission_Info)
   NotifyNewMission(Mission_Info)
 
-  -- spawn units in a random circle around the target location choosing one of the templates
-  local RED_Occupation_Spawn = SPAWN:New(SpawnGroup)
-  RED_Occupation_Spawn:InitRandomizeTemplate(Templates)
-  RED_Occupation_Spawn:InitRandomizeUnits(true, 1500, 0)
-  local RED_Occupation_Group = RED_Occupation_Spawn:Spawn()
-
-  -- make sure the units are on the road
+  -- modify units
   local List = RED_Occupation_Group:GetUnits()
-  for Index = 1, #List, 1 do
-    local Unit = List[Index]
-    local Road_Coordinate = Unit:GetCoordinate():GetClosestPointToRoad(false)
-    Unit:ReSpawnAt(Road_Coordinate, math.random(0, 359))
-  end
+  ConfigureUnits(List)
 
   -- if all units in the group are dead
   -- notify the player the mission is finished
@@ -191,6 +202,7 @@ function CreateMission(Templates, SpawnGroup)
   function RED_Occupation_Group:OnEventDead(EventData)
     if RED_Occupation_Group:GetSize() == 1 then
         NotifyMissionEnd(Mission_Info)
+        Coordinate:RemoveMark(Coordinate_Mark)
         Menu_Item:Remove()
         for Index = 1, #Missions, 1 do
           if Missions[Index].Name == Name then
@@ -213,9 +225,27 @@ function CreateMission(Templates, SpawnGroup)
   )
 end
 
----------
---- Mission Start
+-- create occupation mission
+function CreateOccupationMission(Templates, SpawnGroup)
+  -- spawn units in a circle around the point
+  local ConfigureSpawn = function (Spawn)
+    Spawn:InitRandomizeUnits(true, 1500, 0)
+  end
+  
+  -- move them to a nearest point on the road
+  local ModifyUnits = function (Units)
+    for Index = 1, #Units, 1 do
+      local Unit = Units[Index]
+      local Road_Coordinate = Unit:GetCoordinate():GetClosestPointToRoad(false)
+      Unit:ReSpawnAt(Road_Coordinate, math.random(0, 359))
+    end
+  end
 
-CreateMission(Templates_RED_Occupation, "RED Spawn Occupation #001")
-CreateMission(Templates_RED_Occupation, "RED Spawn Occupation #001")
-CreateMission(Templates_RED_Occupation, "RED Spawn Occupation #002")
+  CreateMission(Templates, SpawnGroup, ConfigureSpawn, ModifyUnits, "Occupation", "Russian forces are occupying a nearby civilian town. Eliminate all hostiles and restore order.", "Expect small ground force [5-10] units with no or limited AA defense")
+end
+
+---------
+--- Mission Start ---
+--
+
+CreateOccupationMission(GetGroupNamesFromPrefix("RED Template Occupation"), GetRandomGroupNameFromPrefix("RED Spawn Occupation"))
