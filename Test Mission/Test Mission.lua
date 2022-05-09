@@ -143,7 +143,7 @@ end
 
 -- get all group names from prefix
 function GetGroupNamesFromPrefix(Prefix)
-  local Occupation_Groups = SET_GROUP:New():FilterCoalitions("red"):FilterPrefixes(Prefix):FilterStart()
+  local Occupation_Groups = SET_GROUP:New():FilterPrefixes(Prefix):FilterStart()
   return Occupation_Groups:GetSetNames()
 end
 
@@ -244,8 +244,30 @@ function CreateOccupationMission(Templates, SpawnGroup)
   CreateMission(Templates, SpawnGroup, ConfigureSpawn, ModifyUnits, "Occupation", "Russian forces are occupying a nearby civilian town. Eliminate all hostiles and restore order.", "Expect small ground force [5-10] units with no or limited AA defense")
 end
 
+--------
+--- Spawn Airport Base ---
+--
+function CreateAirportBase()
+  local Airport_Spawn = SPAWN:New("AP Anapa")
+  Airport_Spawn:InitRandomizeTemplate(GetGroupNamesFromPrefix("BLUE Template Airport"))
+  Airport_Spawn:InitRandomizeUnits(true, 1000, 10)
+  local Group = Airport_Spawn:Spawn()
+  local Units = Group:GetUnits()
+  for Index = 1, #Units, 1 do
+      local Unit = Units[Index]
+      local Original_Coordinate = Unit:GetCoordinate()        
+      local New_Coordinate =  Original_Coordinate
+      while New_Coordinate:IsSurfaceTypeLand() == false
+      do
+        New_Coordinate = Original_Coordinate:GetRandomCoordinateInRadius(100, 2)
+      end
+      Unit:ReSpawnAt(New_Coordinate, math.random(0, 359))
+    end
+end
+
 ---------
 --- Mission Start ---
 --
 
-CreateOccupationMission(GetGroupNamesFromPrefix("RED Template Occupation"), GetRandomGroupNameFromPrefix("RED Spawn Occupation"))
+CreateAirportBase()
+--CreateOccupationMission(GetGroupNamesFromPrefix("RED Template Occupation"), GetRandomGroupNameFromPrefix("RED Spawn Occupation")) 
